@@ -12,14 +12,10 @@ enum Action {
     FOOBAR = 'foobar'
 }
 
-class ActionA extends CreditAction { }
-class ActionB extends CreditAction { }
-class ActionC extends CreditAction { }
-
 const actions: { [key: string]: CreditAction } = {
-    [Action.FOO]: new ActionA(5, () => console.log('foo')),
-    [Action.BAR]: new ActionB(20, () => console.log('bar')),
-    [Action.FOOBAR]: new ActionC(30, () => console.log('foobar')),
+    [Action.FOO]: new CreditAction(5, () => console.log('foo')),
+    [Action.BAR]: new CreditAction(20, () => console.log('bar')),
+    [Action.FOOBAR]: new CreditAction(30, () => console.log('foobar')),
 };
 
 async function main() {

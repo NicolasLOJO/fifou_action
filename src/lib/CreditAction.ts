@@ -5,7 +5,7 @@ interface ICreditAction {
     action: any;
 }
 
-export abstract class CreditAction implements ICreditAction {
+export class CreditAction implements ICreditAction {
     private _credit!: number;
     public get credit(): number {
         return this._credit;
