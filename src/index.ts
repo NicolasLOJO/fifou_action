@@ -1,22 +1,14 @@
-import { log } from "console";
 import { CreditAction } from "./lib/CreditAction";
 import { Queue } from "./lib/Queue";
 import express from 'express';
+import { Container } from "./lib/Container";
+import { ActionController } from "./app/action/ActionController";
+import { QueueController } from "./app/queue/QueueController";
+import { createServer } from "http";
+import { Socket } from "./lib/Socket";
 
 const ACTION_INTERVAL = (1000 * 60) * 2;
 const RESET_ACTION = ((1000 * 60) * 60) * 24
-
-enum Action {
-    FOO = 'foo',
-    BAR = 'bar',
-    FOOBAR = 'foobar'
-}
-
-const actions: { [key: string]: CreditAction } = {
-    [Action.FOO]: new CreditAction(5, () => console.log('foo')),
-    [Action.BAR]: new CreditAction(20, () => console.log('bar')),
-    [Action.FOOBAR]: new CreditAction(30, () => console.log('foobar')),
-};
 
 async function main() {
     const app = express();
@@ -24,48 +16,19 @@ async function main() {
     app.use(express.urlencoded({
         extended: true
     }));
-    const queue = new Queue<Action>();
+    const queue = new Queue<CreditAction>();
+    const container = new Container();
+    container.set('Queue', queue);
 
-    app.get('/queue', (req, res, next) => {
-        return res.json(queue.queue);
-    });
+    app.use(new ActionController().initRouter(container));
+    app.use(new QueueController().initRouter(container));
 
-    let timer: NodeJS.Timer | undefined;
-    app.post('/action', (req, res, next) => {
-        const { action } = req.body;
-        queue.enqueue(action);
-        queue.execute(ACTION_INTERVAL, () => {
-            timer && clearTimeout(timer);
-            timer = setTimeout(() => {
-                for (const key in actions) {
-                    const action = actions[key];
-                    action.reset();
-                }
-            }, RESET_ACTION);
-            if (queue.count() === 0) queue.stop();
-            if (queue.count() > 0) {
-                const a = <Action>queue.dequeue();
-                const aa = actions[a];
-                if (aa.credit > 0) {
-                    const func = aa.action;
-                    if (typeof func === 'function') {
-                        func();
-                    }
-                }
-            }
-        })
-        return res.json(queue.queue);
-    });
-    app.get('/action', (req, res, next) => {
-        return res.json(Object.keys(actions).map(x => {
-            return {
-                action: x,
-                credit: actions[x].credit
-            }
-        }));
-    })
-
-    app.listen(3000, () => console.log('Started'));
+    const server = createServer(app);
+    const s = new Socket(server);
+    s.init();
+    container.set('io', s);
+    
+    server.listen(3005, () => console.log('Started'));
 }
 
 main();
