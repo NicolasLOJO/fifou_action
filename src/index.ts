@@ -1,34 +1,85 @@
-import { CreditAction } from "./lib/CreditAction";
-import { Queue } from "./lib/Queue";
-import express from 'express';
-import { Container } from "./lib/Container";
-import { ActionController } from "./app/action/ActionController";
-import { QueueController } from "./app/queue/QueueController";
+import express, { NextFunction, Request, Response, Router } from "express";
 import { createServer } from "http";
-import { Socket } from "./lib/Socket";
+import { AddressInfo } from "net";
+import { ActionController } from "./controller/ActionController";
+import { Action } from "./model/Action";
+import { Queue } from "./utils/Queue";
+import { Server } from 'socket.io';
+import { Container } from "./utils/Container";
 
-const ACTION_INTERVAL = (1000 * 60) * 2;
-const RESET_ACTION = ((1000 * 60) * 60) * 24
+const port = 3005;
+const app = express();
 
-async function main() {
-    const app = express();
-    app.use(express.json());
-    app.use(express.urlencoded({
-        extended: true
-    }));
-    const queue = new Queue<CreditAction>();
-    const container = new Container();
-    container.set('Queue', queue);
+// Config Queue
+const userQueue: { [user: string]: Queue<Action> } = {};
+const queue = new Queue<Action>('fifo');
+let interval: NodeJS.Timer;
+let timeout: NodeJS.Timeout;
+const [reset, dequeue] = [((1000 * 60) * 60) * 24, (1000 * 1) * 2]; // [24 hours, 2 minutes]
+const actions = [
+    new Action('up', 30, 'up'),
+    new Action('right', 20, 'right'),
+    new Action('down', 10, 'down'),
+    new Action('left', 25, 'left'),
+]
 
-    app.use(new ActionController().initRouter(container));
-    app.use(new QueueController().initRouter(container));
+// Config server
+const container: Container = {};
+const actionCtrl = new ActionController(container, actions);
+app.use(actionCtrl.initRoute(Router()));
 
-    const server = createServer(app);
-    const s = new Socket(server);
-    s.init();
-    container.set('io', s);
-    
-    server.listen(3005, () => console.log('Started'));
-}
+// Config socket io
+const http = createServer(app);
+const io = new Server(http, {
+    cors: {
+        origin: '*'
+    }
+});
+io.on('connection', (socket) => {
+    socket.on('init', (user) => {
+        if (!container[user]) container[user] = new Queue('fifo');
+        // Queue event to handle socket io
+        container[user].on('enqueue', () => {
+            const items = container[user].getItems().map((x: Action) => ({
+                name: x.name,
+                credit: x.credit
+            }));
+            socket.emit('queue/list', items);
+            if (interval) {
+                clearInterval(interval);
+            }
+            if (timeout) {
+                clearTimeout(timeout);
+            }
+            interval = setInterval(() => {
+                container[user].dequeue();
+                if (container[user].count() === 0) {
+                    clearInterval(interval);
+                }
+            }, dequeue);
+        })
+        container[user].on('dequeue', (item: Action) => {
+            if (container[user].count() > 0) {
+                try {
+                    const action = item.getAction();
+                    socket.emit('queue/action', action);
+                } catch (err) {
+                    socket.emit('queue/action', (<Error>err).message);
+                }
+                timeout = setTimeout(() => {
+                    actions.forEach(x => x.init())
+                }, reset);
+            }
+            const items = container[user].getItems().map((x: Action) => ({
+                name: x.name,
+                credit: x.credit
+            }));
+            socket.emit('queue/list', items);
+        })
+    })
+})
 
-main();
+
+const server = http.listen(port, () => {
+    console.log(`Server started on port : ${(<AddressInfo>server.address()).port}`)
+})

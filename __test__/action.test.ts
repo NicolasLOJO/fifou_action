@@ -1,33 +1,33 @@
-import { CreditAction } from "../src/lib/CreditAction"
+import { Action } from "../src/model/Action";
 import { percentOf } from "../src/utils/number";
-// Test class because of abstract creditaction
-describe('Action', () => {
+
+describe('action', () => {
     it('should have 80% credit min', () => {
-        const action = new CreditAction(20, jest.fn);
+        const action = new Action('foo', 20, jest.fn);
         const { credit } = action;
         const percent = percentOf(80, 20);
         expect(credit).toBeGreaterThanOrEqual(percent);
     });
 
     it('should decrease credit on action', () => {
-        const action = new CreditAction(20, jest.fn);
+        const action = new Action('foo', 20, jest.fn);
         const { credit } = action;
-        action.action();
+        action.getAction();
         expect(credit).toBeGreaterThan(action.credit);
     })
 
     it('should throw exception when credit is 0', () => {
-        const action = new CreditAction(0, jest.fn);
-        expect(() => action.action()).toThrow("No more credit");
+        const action = new Action('foo', 0, jest.fn);
+        expect(() => action.getAction()).toThrow("No more credit");
     });
 
     it('should reset credit', () => {
-        const action = new CreditAction(20, jest.fn);
+        const action = new Action('foo', 20, jest.fn);
         while (action.credit) {
-            action.action();
+            action.getAction();
         }
         expect(action.credit).toBe(0);
-        action.reset();
+        action.init();
         const percent = percentOf(80, 20);
         expect(action.credit).toBeGreaterThanOrEqual(percent);
     })
